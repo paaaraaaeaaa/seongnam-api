@@ -4,46 +4,43 @@ import joblib
 import pandas as pd
 import traceback
 
-app = FastAPI(title="성남시 교통사고 예측 API")
+app = FastAPI(title="성남시 교통사고 위험 예측 API")
+model = joblib.load('seongnam_model.pkl')
 
-# 파일 불러오기
-model = joblib.load('accident_model.pkl')
-label_encoder = joblib.load('label_encoder.pkl')
-
+# 프론트엔드에서 받을 데이터 양식
 class PredictRequest(BaseModel):
-    year: int
-    accident_type: str
-    dong_code: int
-    signal_violation: float
+    target_name: str
     speeding: float
-    safe_distance: float
+    center_line: float
+    signal: float
+    safe_dist: float
+    duty: float
+    pedestrian: float
+    etc: float
 
 @app.get("/")
 def read_root():
-    return {"message": "서버 정상 작동 중!"}
+    return {"message": "성남시 교통사고 위험 예측 24시간 API 서버 정상 작동 중!"}
 
 @app.post("/predict")
-def predict_accident(data: PredictRequest):
+def predict_risk(data: PredictRequest):
     try:
         input_df = pd.DataFrame([{
-            '연도': data.year,
-            '대상사고 구분명': data.accident_type,
-            '법정동코드': data.dong_code,
-            '신호위반': data.signal_violation,
+            '대상사고 구분명': data.target_name,
             '과속': data.speeding,
-            '안전거리 미확보': data.safe_distance
+            '중앙선 침범': data.center_line,
+            '신호위반': data.signal,
+            '안전거리 미확보': data.safe_dist,
+            '안전운전 의무 불이행': data.duty,
+            '보행자 보호의무 위반': data.pedestrian,
+            '기타': data.etc
         }])
         
-        input_df['대상사고 구분명'] = label_encoder.transform(input_df['대상사고 구분명'].astype(str))
-        predicted_accidents = model.predict(input_df)[0]
+        risk_score = model.predict(input_df)[0]
         
         return {
-            "예상_사고건수": round(predicted_accidents, 2),
-            "위험도": "위험" if predicted_accidents >= 30 else "안전"
+            "위험지수_결과": round(float(risk_score), 2),
+            "상태": "위험" if risk_score >= 50 else "안전"
         }
     except Exception as e:
-        # 🌟 에러가 나면 500으로 뻗는 대신, 화면에 에러 원인을 그대로 보여줍니다!
-        return {
-            "에러_원인": str(e),
-            "상세_설명": traceback.format_exc()
-        }
+        return {"에러_원인": str(e), "상세_설명": traceback.format_exc()}
