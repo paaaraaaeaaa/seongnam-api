@@ -23,17 +23,14 @@ class PredictRequest(BaseModel):
 @app.post("/predict")
 def predict_risk(data: PredictRequest):
     try:
-        # 🌟 1. AI 해킹: 모델이 학습할 때 기억해둔 '법정동코드'의 진짜 타입을 훔쳐옵니다!
         dong_input = data.dong
         try:
             ohe = model.named_steps['preprocessor'].named_transformers_['cat'].named_steps['onehot']
-            # cat_features = ['대상사고 구분명', '법정동코드'] 이므로 인덱스 1 추출
             expected_type = type(ohe.categories_[1][0])
-            dong_input = expected_type(data.dong) # int든 float이든 str이든 강제로 맞춰버림!
+            dong_input = expected_type(data.dong)
         except Exception as type_e:
-            dong_input = int(data.dong) # 만약 실패하면 정수형으로 시도
+            dong_input = int(data.dong)
 
-        # 2. 완벽하게 타입이 맞춰진 데이터를 입력
         mapped_data = {
             "연도": int(data.year),
             "법정동코드": str(data.dong)
