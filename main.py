@@ -36,7 +36,7 @@ def predict_risk(data: PredictRequest):
         # 2. 완벽하게 타입이 맞춰진 데이터를 입력
         mapped_data = {
             "연도": int(data.year),
-            "법정동코드": dong_input, 
+            "법정동코드": str(data.dong)
             "대상사고 구분명": str(data.target_name),
             "과속": float(data.speeding),
             "중앙선 침범": float(data.center_line),
