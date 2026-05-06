@@ -23,10 +23,19 @@ class PredictRequest(BaseModel):
 @app.post("/predict")
 def predict_risk(data: PredictRequest):
     try:
-        # 1. 프론트엔드 데이터를 모델이 아는 한글로 완벽 매핑
+        # 🌟 함정 1 해결: 프론트에서 온 코드를 팀원 1이 학습했을 법한 '한글 동이름'으로 역변환!
+        # (만약 프론트에서 이미 한글로 온다면 그대로 씁니다)
+        dong_mapping = {
+            "4113110100": "수진1동", "4113110200": "수진2동", "4113110300": "신흥1동",
+            "4113110400": "신흥2동", "4113110500": "신흥3동", "4113110600": "단대동",
+            "4113110700": "은행동", "4113110800": "양지동", "4113110900": "태평1동",
+            "4113111000": "태평2동", "4113111100": "태평3동", "4113111200": "태평4동"
+        }
+        real_dong_name = dong_mapping.get(str(data.dong), str(data.dong))
+
         mapped_data = {
             "연도": int(data.year),
-            "법정동코드": str(data.dong),
+            "법정동코드": real_dong_name,
             "대상사고 구분명": str(data.target_name),
             "과속": float(data.speeding),
             "중앙선 침범": float(data.center_line),
@@ -39,30 +48,32 @@ def predict_risk(data: PredictRequest):
         
         input_df = pd.DataFrame([mapped_data])
         
-        # 2. 모델 예측 실행 (이건 완벽하게 작동합니다)
+        # 모델 예측
         prediction = model.predict(input_df)[0]
         risk_status = "위험" if prediction >= 50 else "안전"
         
-        # 3. SHAP 연산 (서버 터짐 방지 처리 완료!)
+        # 🌟 함정 2 해결: 고정 인덱스(3, 5) 폐기! 변환된 컬럼 이름을 추적해서 진짜 SHAP 값을 매핑
         shap_dict = {}
         try:
-            # 🌟 [핵심 수정] 날것의 데이터가 아닌, 전처리(변환)가 끝난 데이터를 SHAP에 넣어야 합니다!
             processed_data = model.named_steps['preprocessor'].transform(input_df)
             explainer = shap.TreeExplainer(model.named_steps['regressor'])
             shap_values = explainer.shap_values(processed_data)
             
-            # 총괄님이 예전에 보고서에 작성하셨던 추출 방식을 그대로 부활시켰습니다.
-            # (만약 그래프에 항목을 더 추가하고 싶으시면 숫자를 바꿔서 추가하시면 됩니다!)
-            shap_dict = {
-                "과속": float(shap_values[0][3]),
-                "신호위반": float(shap_values[0][5]),
-                "안전거리": float(shap_values[0][6])
-            }
+            # 전처리기가 만든 새로운 컬럼 이름들을 가져옴
+            feature_names = model.named_steps['preprocessor'].get_feature_names_out()
+            
+            # 우리가 프론트엔드에 보여줄 항목만 쏙쏙 뽑아냄 (개수 제한 없음!)
+            target_features = ["과속", "중앙선 침범", "신호위반", "안전거리 미확보", "안전운전 의무 불이행", "보행자 보호의무 위반", "기타"]
+            
+            for name, val in zip(feature_names, shap_values[0]):
+                for target in target_features:
+                    # '과속' 이라는 단어가 포함된 컬럼의 SHAP 값을 찾아서 저장
+                    if target in name:
+                        shap_dict[target] = round(float(val), 2)
+                        
         except Exception as shap_e:
-            # 만약 그래프 계산에서 에러가 나더라도, 서버가 뻗지 않고 빈 그래프만 보냅니다.
-            print("SHAP 계산 에러:", shap_e)
+            print("SHAP 자동 매핑 에러:", shap_e)
 
-        # 4. JSON 형태로 최종 반환
         return {
             "위험지수_결과": round(float(prediction), 2),
             "상태": risk_status,
@@ -70,5 +81,4 @@ def predict_risk(data: PredictRequest):
         }
         
     except Exception as e:
-        # 최악의 경우 에러가 나도, 프론트가 0점 대신 에러 이유를 화면에 띄우도록 합니다.
         return {"error": str(e), "위험지수_결과": -1}
