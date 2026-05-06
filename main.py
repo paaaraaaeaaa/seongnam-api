@@ -33,7 +33,7 @@ def predict_risk(data: PredictRequest):
 
         mapped_data = {
             "연도": int(data.year),
-            "법정동코드": str(data.dong)
+            "법정동코드": str(data.dong),
             "대상사고 구분명": str(data.target_name),
             "과속": float(data.speeding),
             "중앙선 침범": float(data.center_line),
