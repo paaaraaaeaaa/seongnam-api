@@ -23,11 +23,20 @@ class PredictRequest(BaseModel):
 @app.post("/predict")
 def predict_risk(data: PredictRequest):
     try:
-        # 🌟 진실의 방: 팀원 1의 전처리 파이프라인과 완벽하게 일치하는 데이터 매핑
+        # 🌟 1. AI 해킹: 모델이 학습할 때 기억해둔 '법정동코드'의 진짜 타입을 훔쳐옵니다!
+        dong_input = data.dong
+        try:
+            ohe = model.named_steps['preprocessor'].named_transformers_['cat'].named_steps['onehot']
+            # cat_features = ['대상사고 구분명', '법정동코드'] 이므로 인덱스 1 추출
+            expected_type = type(ohe.categories_[1][0])
+            dong_input = expected_type(data.dong) # int든 float이든 str이든 강제로 맞춰버림!
+        except Exception as type_e:
+            dong_input = int(data.dong) # 만약 실패하면 정수형으로 시도
+
+        # 2. 완벽하게 타입이 맞춰진 데이터를 입력
         mapped_data = {
             "연도": int(data.year),
-            # 핵심!! 문자열(str)이 아닌 반드시 정수(int)로 변환해서 모델에 줘야 합니다!
-            "법정동코드": int(data.dong), 
+            "법정동코드": dong_input, 
             "대상사고 구분명": str(data.target_name),
             "과속": float(data.speeding),
             "중앙선 침범": float(data.center_line),
@@ -39,19 +48,15 @@ def predict_risk(data: PredictRequest):
         }
         
         input_df = pd.DataFrame([mapped_data])
-        
-        # 모델 예측 (이제 지역 코드를 완벽하게 인식합니다)
         prediction = model.predict(input_df)[0]
         risk_status = "위험" if prediction >= 50 else "안전"
         
-        # SHAP 연산 (폭포수 그래프 항목 무제한 추출기)
         shap_dict = {}
         try:
             processed_data = model.named_steps['preprocessor'].transform(input_df)
             explainer = shap.TreeExplainer(model.named_steps['regressor'])
             shap_values = explainer.shap_values(processed_data)
             
-            # ColumnTransformer가 뱉어낸 'num__과속' 같은 이름을 추적
             feature_names = model.named_steps['preprocessor'].get_feature_names_out()
             target_features = ["과속", "중앙선 침범", "신호위반", "안전거리 미확보", "안전운전 의무 불이행", "보행자 보호의무 위반", "기타"]
             
@@ -60,7 +65,7 @@ def predict_risk(data: PredictRequest):
                     if target in name:
                         shap_dict[target] = round(float(val), 2)
         except Exception as shap_e:
-            print("SHAP 매핑 에러:", shap_e)
+            print("SHAP 에러:", shap_e)
 
         return {
             "위험지수_결과": round(float(prediction), 2),
