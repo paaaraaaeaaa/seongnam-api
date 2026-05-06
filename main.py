@@ -23,14 +23,6 @@ class PredictRequest(BaseModel):
 @app.post("/predict")
 def predict_risk(data: PredictRequest):
     try:
-        dong_input = data.dong
-        try:
-            ohe = model.named_steps['preprocessor'].named_transformers_['cat'].named_steps['onehot']
-            expected_type = type(ohe.categories_[1][0])
-            dong_input = expected_type(data.dong)
-        except Exception as type_e:
-            dong_input = int(data.dong)
-
         mapped_data = {
             "연도": int(data.year),
             "법정동코드": str(data.dong),
