@@ -23,19 +23,11 @@ class PredictRequest(BaseModel):
 @app.post("/predict")
 def predict_risk(data: PredictRequest):
     try:
-        # 🌟 함정 1 해결: 프론트에서 온 코드를 팀원 1이 학습했을 법한 '한글 동이름'으로 역변환!
-        # (만약 프론트에서 이미 한글로 온다면 그대로 씁니다)
-        dong_mapping = {
-            "4113110100": "수진1동", "4113110200": "수진2동", "4113110300": "신흥1동",
-            "4113110400": "신흥2동", "4113110500": "신흥3동", "4113110600": "단대동",
-            "4113110700": "은행동", "4113110800": "양지동", "4113110900": "태평1동",
-            "4113111000": "태평2동", "4113111100": "태평3동", "4113111200": "태평4동"
-        }
-        real_dong_name = dong_mapping.get(str(data.dong), str(data.dong))
-
+        # 🌟 진실의 방: 팀원 1의 전처리 파이프라인과 완벽하게 일치하는 데이터 매핑
         mapped_data = {
             "연도": int(data.year),
-            "법정동코드": real_dong_name,
+            # 핵심!! 문자열(str)이 아닌 반드시 정수(int)로 변환해서 모델에 줘야 합니다!
+            "법정동코드": int(data.dong), 
             "대상사고 구분명": str(data.target_name),
             "과속": float(data.speeding),
             "중앙선 침범": float(data.center_line),
@@ -48,31 +40,27 @@ def predict_risk(data: PredictRequest):
         
         input_df = pd.DataFrame([mapped_data])
         
-        # 모델 예측
+        # 모델 예측 (이제 지역 코드를 완벽하게 인식합니다)
         prediction = model.predict(input_df)[0]
         risk_status = "위험" if prediction >= 50 else "안전"
         
-        # 🌟 함정 2 해결: 고정 인덱스(3, 5) 폐기! 변환된 컬럼 이름을 추적해서 진짜 SHAP 값을 매핑
+        # SHAP 연산 (폭포수 그래프 항목 무제한 추출기)
         shap_dict = {}
         try:
             processed_data = model.named_steps['preprocessor'].transform(input_df)
             explainer = shap.TreeExplainer(model.named_steps['regressor'])
             shap_values = explainer.shap_values(processed_data)
             
-            # 전처리기가 만든 새로운 컬럼 이름들을 가져옴
+            # ColumnTransformer가 뱉어낸 'num__과속' 같은 이름을 추적
             feature_names = model.named_steps['preprocessor'].get_feature_names_out()
-            
-            # 우리가 프론트엔드에 보여줄 항목만 쏙쏙 뽑아냄 (개수 제한 없음!)
             target_features = ["과속", "중앙선 침범", "신호위반", "안전거리 미확보", "안전운전 의무 불이행", "보행자 보호의무 위반", "기타"]
             
             for name, val in zip(feature_names, shap_values[0]):
                 for target in target_features:
-                    # '과속' 이라는 단어가 포함된 컬럼의 SHAP 값을 찾아서 저장
                     if target in name:
                         shap_dict[target] = round(float(val), 2)
-                        
         except Exception as shap_e:
-            print("SHAP 자동 매핑 에러:", shap_e)
+            print("SHAP 매핑 에러:", shap_e)
 
         return {
             "위험지수_결과": round(float(prediction), 2),
