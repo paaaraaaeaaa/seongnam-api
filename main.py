@@ -38,7 +38,7 @@ def predict_risk(data: PredictRequest):
         
         input_df = pd.DataFrame([mapped_data])
         prediction = model.predict(input_df)[0]
-        risk_status = "위험" if prediction >= 50 else "안전"
+        risk_status = "위험" if prediction >= 20 else "안전"  
         
         shap_dict = {}
         try:
